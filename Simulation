@@ -1,0 +1,380 @@
+######################################################################
+# Simulate with a slow, protective variable, using 1000 participants #
+######################################################################
+library(qgraph)
+library(bootnet)
+library(IsingFit)
+library(mgm)
+library(igraph)
+
+
+setwd("~/BA Psychological Sciences/Psychology Year 3/Psychological Methods/Bachelor's Thesis/Thesis Code")
+
+rm(list = ls())
+
+# Get new data set with combined variables
+data <- read.csv2("combined_data.csv", header = TRUE)
+data <- data[,-1]
+
+# Get weight and thresholds from network
+network <- IsingFit(data, plot = FALSE)
+
+weight <- network$weiadj
+threshold <- abs(as.vector(network$thresholds))
+
+
+# Simulation 
+N <- 1000 # participants 
+t <- 100 # time points
+k <- 9 # symptoms 
+
+# Repeat the simulation x amounts of time
+sim_state_slow=array(NA, c(t, k, N)) #array that contains N's states for all k items at all t time points
+sim_state_slow[1,,]=1 #first time point, the state is with symptoms
+
+sim_activation_slow=array(NA, c(t,k,N)) 
+sim_activation_slow[1,,]=0
+
+sim_probabilities_slow=array(NA,c(t,k,N)) 
+sim_probabilities_slow[1,,]=0 
+
+
+for (i in 1:N){
+  sim_thresholds_slow[,,i]=threshold*0.55 # In order for the model to fit, there must be variance. So there must be a delay in symptom activation at the start
+}
+
+# The slow variable increases the thresholds with 0.1 every 10th time point 
+slowvariable_slow <- matrix(NA, t, 1)
+updates <- 10 
+slowvar_levels <- seq(from=0, to=.075, length.out = t/updates)
+slowvariable_slow <- rep(slowvar_levels, each = updates) 
+
+
+for (n in 1:N) #for all N
+{
+  for(i in 2:t) #for all time points 
+  {
+    for (j in 1:k) #for all items 
+    {
+      sim_activation_slow[i,j,n]=weight[,j]%*%sim_state_slow[i-1,,n] 
+      sim_probabilities_slow[i,j,n]=1/(1 + exp(sim_thresholds_slow[,j,n] - sim_activation_slow[i,j,n]))
+      sim_state_slow[i,j,n]= rbinom(1,1,sim_probabilities_slow[i,j,n])
+    }
+    sim_thresholds_slow[,,n] <- sim_thresholds_slow[,,n] + slowvariable_slow[i]
+  }
+}
+
+for (r in 1:100){
+  slowmatrix <- array(0, c(t, k+1, N))
+  observations <- matrix(NA, N, k+1) # Empty matrix including the slow variable
+}
+
+for(n in 1:10){
+  plot(1:t, rowSums(sim_state_slow[,,n]), type="l", ylim=c(0,10), col="blue", main = "Symptom activation", xlab='Time', ylab='Symptoms')
+ lines(1:t, slowvariable_slow, type="l", col="red")
+}
+
+data_inclusive <- list()
+
+slowmatrix <- array(0, c(t, k+1, N)) # Empty matrix including the slow variable
+
+for (i in 1:t){
+  slowmatrix[,,i] <-cbind(sim_state_slow[,,i], slowvariable_slow) #Implementing slow variable
+}
+
+time <- ?sample(t, N, replace=TRUE)
+observation <- matrix(NA,N,k+1)
+
+
+for (z in 1:100){
+  for (i in 1:N){
+    observation[i,] = slowmatrix[time[i],,i]
+    data_inclusive[[z]] <- observation
+  }
+}
+
+colnames(observation)=c("pmt","sle","wei","dep","int","fat","wor","con","dea","exp")
+
+#### MGM ####
+
+# Specify the symptom matrices 
+list_slow <- list()
+list_noslow <- list()
+
+for(b in 1:100){ 
+  # mgm network + slow
+  fit_mgm_slow <- mgm(data_inclusive[[b]],     
+                      type=c(rep('c',9),'g'),
+                      levels=c(rep(2,9),1),
+                      k=2)
+  
+  list_slow[[b]] <- fit_mgm_slow$pairwise$wadj
+  # mgm network - slow
+  fit_mgm <- mgm(data_inclusive[[b]][,-10],
+                 type=rep('c', times=9),
+                 levels=rep(2, times =9),
+                 k=2)
+  list_noslow[[b]] <- fit_mgm$pairwise$wadj
+}
+
+
+# Plotting in PDF 
+
+for (w in 1:100){
+  nw_slow <- list_slow[[w]]
+  nw <- list_noslow[[w]]
+  # add dummy node
+  nw_dummy <- cbind(nw, 0)
+  nw_dummy <- rbind(nw_dummy, 0)
+  
+  maxvalue <- max(nw_slow, nw_dummy)
+  avLayout <- ?averageLayout(nw_slow, nw_dummy)
+  pdf(paste0('networks_', 'e', '.pdf'), height = 4, width = 8)
+  layout(matrix(1:2,1,2))
+  qgraph(nw_slow, maximum = maxvalue, theme = "colorblind", layout = avLayout, labels=colnames(observation))
+  title("Compleet netwerk", line = +3, adj = 0.1, cex.main = 1)
+  qgraph(nw_dummy, maximum = maxvalue, theme = "colorblind", layout = avLayout, labels=colnames(observation), border.color = c(rep("black",9), "white"), color = c(rep("white",9), "white"))
+  title("Incompleet network", line = +3, adj = 0.1, cex.main = 1)
+  dev.off()
+}
+
+
+##### Analyzing the networks #######
+
+# Descriptive stats
+
+correlations <- c()
+
+# Correlation
+for (r in 1:10){
+  nw_slow <- list_slow[[r]][-10,-10]
+  nw <- list_noslow[[r]]
+  
+  #removing all the diagonal values, which equals all 0's
+  diag(nw_slow) = NA
+  diag(nw) = NA
+  
+  correlations[r] <- cor(c(nw_slow), c(nw), use="na.or.complete" )
+}
+
+hist(correlations, main = "Correlaties tussen gewichtenmatrices", ylab = "Frequentie",
+     xlab = "Correlatiecoëfficiënt", xlim = c(0.92, 1))
+plot(nw)
+
+# Descriptive stats 
+var(correlations)
+mean(correlations)
+sd(correlations)
+
+mean_weights_slow <- list()
+mean_weights <- list()
+
+for (s in 1:100){
+  mean(list_slow[[s]][-10,-10])
+  mean(list_noslow[[s]])
+}
+# Centrality 
+
+cent_inc <- list()
+cent_exc <- list()
+
+for (o in 1:10){
+  nw_slow <- list_slow[[o]][-10,-10]
+  nw <- list_noslow[[o]]
+  
+  cent_inc <- centrality(nw_slow)
+  cent_exc <- centrality(nw)
+  
+  centralityPlot(GGM = list(complete = nw_slow, incomplete = nw), labels = c("pmt","sle","wei","dep","int","fat","wor","con","dea"),
+                 include = c("Strength", "Betweenness", "Closeness"))
+}
+
+# Density 
+weights_slow <- c()
+weights <- c()
+
+amount_slow <- c()
+amount <- c()
+
+density_slow <- c()
+density <- c()
+
+for (d in 1:100){
+  nw_slow <- list_slow[[d]][-10,-10]
+  nw <- list_noslow[[d]]
+  
+  weights_slow[[d]] <- sum(c(nw_slow))
+  weights[[d]] <- sum(c(nw))
+  
+  # Amount of edges 
+  edge_slow  = 0
+  
+  for (c in 1:9)
+  {
+    for (r in 1:9)
+    { 
+      if (nw_slow[r,c] > 0)
+      {
+        edge_slow = edge_slow + 1
+      }
+    }
+  }
+  amount_slow[[d]] <- edge_slow
+  
+  edge = 0
+  
+  for (c in 1:9)
+  {
+    for (r in 1:9)
+    { 
+      if (nw[r,c] > 0)
+      {
+        edge = edge + 1
+      }
+    }
+  }
+  amount[[d]] <- edge
+}
+
+density_slow<- weights_slow/amount_slow
+density_slow
+density <- weights/amount
+density
+
+sum(weights_slow)
+sum(weights)
+
+hist(density_slow, col=rgb(1,0,0,0.2), main = "Distribution of Densities", xlim = c(0.9, 1.15), ylim = c(0, 50), xlab = "Density Values")
+hist(density,  col=rgb(0,0,1,0.2), add=T)
+legend("topright", legend=c("Complete" ,"Incomplete"), col=c(rgb(1,0,0,0.2), 
+                                                             rgb(0,0,1,0.2)), pt.cex=2, pch=15 )
+info1 <- mean((abs(density- density_slow)))
+hist(abs(density- density_slow))
+info2 <- sd((abs(density- density_slow)))
+
+mean(density)
+
+t.test(density, mu = mean(density_slow), alternative = "two.sided")
+
+
+sum(var(density_slow),
+    var(density))
+sd(density, density_slow)
+sd(correlations)
+
+# Non-parametric bootnet 
+
+boot_nw_slow <- list()
+boot_nw <- list()
+for (d in 1:100){
+  boot_nw_slow <- data_inclusive[[z]]
+  boot_nw <- data_inclusive[[z]][,-10]
+}
+
+
+nw_estimated_slow <- estimateNetwork(boot_nw_slow, default = "mgm", type=c(rep('c',9),'g'),
+                                     level=c(rep(2,9),1))
+nw_estimated <- estimateNetwork(boot_nw, default = "mgm",type = rep('c', times=9),
+                                level=rep(2, times = 9))
+
+plot(nw_estimated_slow)
+plot(nw_estimated)
+par(mfrow=c(1,1))
+
+boot1 <- bootnet(nw_estimated_slow, nBoots = 10, nCores= 8)
+boot22 <- bootnet(nw_estimated, nBoots = 1000, nCores = 8, default = "mgm", type = "nonparametric", model = "detect",
+                  statistics = c("edge", "strength")) 
+plot(boot1, order = "sample",  labels = FALSE)
+plot(boot22, order = "sample", labels = FALSE)
+
+boot22$sampleTable
+bootresults <- summary(boot22)
+
+plot(boot1, plot = "difference", 
+     onlyNonZero = TRUE,
+     order= "sample")
+
+
+plot(boot22, plot = "difference",
+     onlyNonZero = TRUE,
+     order = "sample")
+
+# NCT
+
+NCT(nw_estimated_slow, nw_estimated, paired = TRUE)
+
+# um 
+
+weights_slow <- c()
+weights <- c()
+
+amount_slow <- c()
+amount <- c()
+
+density_slow <- c()
+density <- c()
+
+for (d in 1:100){
+  nw_slow <- list_slow[[d]][-10,-10]
+  nw <- list_noslow[[d]]
+  
+  weights_slow[[d]] <- sum(c(nw_slow))
+  weights[[d]] <- sum(c(nw))
+  
+  # Amount of edges 
+  edge_slow  = 0
+  
+  for (c in 1:9)
+  {
+    for (r in 1:9)
+    { 
+      if (nw_slow[r,c] > 0)
+      {
+        edge_slow = edge_slow + 1
+      }
+    }
+  }
+  amount_slow[[d]] <- edge_slow
+  
+  edge = 0
+  
+  for (c in 1:9)
+  {
+    for (r in 1:9)
+    { 
+      if (nw[r,c] > 0)
+      {
+        edge = edge + 1
+      }
+    }
+  }
+  amount[[d]] <- edge
+}
+
+density_slow<- weights_slow/(k*(k-1))
+density_slow
+density <- weights/(k*(k-1))
+density
+
+
+hist(density_slow, col=rgb(1,0,0,0.2), main = "Distribution of Densities", xlim = c(.45, .57), ylim = c(0, 50), xlab = "Density Values")
+hist(density,  col=rgb(0,0,1,0.2), add=T)
+legend("topright", legend=c("Complete" ,"Incomplete"), col=c(rgb(1,0,0,0.2), 
+                                                             rgb(0,0,1,0.2)), pt.cex=2, pch=15 )
+info1 <- mean((abs(density- density_slow)))
+hist(abs(density- density_slow))
+info2 <- sd((abs(density- density_slow)))
+
+mean(density)
+
+t.test(density, mu = mean(density_slow), alternative = "two.sided")
+
+
+sum(var(density_slow),
+    var(density))
+sd(density, density_slow)
+sd(correlations)
+
+CT <- getWmat(nw)
+centralityTable(CT, labels, standardized = TRUE, weighted =
+                  TRUE, signed = TRUE)
