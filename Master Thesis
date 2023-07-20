@@ -107,13 +107,13 @@ newdat_untisc <- ctGenerate(ctmodelobj = gm_c,
 newdat_untisc[,5][-indices_to_keep] <- NA
 newdat_untisc[,4][-indices_to_keep_1] <- NA
 
-# Check 
-head(newdat_complete)
-head(newdat_unts)
-head(newdat_unti)
-head(newdat_untisc)
+# # Check 
+# head(newdat_complete)
+# head(newdat_unts)
+# head(newdat_unti)
+# head(newdat_untisc)
 
-#--------------------------------SIMULATION-------------------------------------
+#--------------------------------SIMULATION: CHECK------------------------------
 # # 4. CHECK; Fit CTM using ctModel
 # wide_4 <- ctLongToWide(data = newdat_c, 
 #                        id = "id",
@@ -151,7 +151,11 @@ head(newdat_untisc)
 #----------------------------------------------------
 
 # ------------------------------------------------------------------------------
-# function that plots the different data structures 
+#' Plot_data 
+#' 
+#' This function allows for the plotting of ESM data, and shows the fluctuations
+#' of the processes over time, for a given set of 3 variables. 
+
 plot_data <- function(data) {
   plot(data[, 2][0:200], data[, 3][0:200], type = 'o', cex = 0.3,
        xlab = 'Time in hours',
@@ -277,7 +281,9 @@ fit_model = function(dataset, model) {
   return(list(mean_matrix = mean_matrix, sd_matrix = sd_matrix))
 }
 
-# ------------------------ Extract relevant info 
+#----------------------------------------------------
+#---------- Extract info for graph ------------------
+#----------------------------------------------------
 
 # Define the data sets and models
 datasets <- list(newdat_complete, newdat_unts, newdat_unti, newdat_untisc)
@@ -286,12 +292,13 @@ models <- list(ctmodel_sim, dtmodel_sim)
 # Initialize the result list and biases
 mean_matrices <- list()
 sd_matrices <- list()
+
 biases <- matrix(NA, nrow = length(datasets), ncol = length(models))
 sd_graph <- matrix(NA, nrow = length(datasets), ncol = length(models))
 
-# median_biases <- matrix(NA, nrow = length(datasets), ncol = length(models))
 
-# Fit models and calculate mean matrices
+#---------- Fit models and extract mean ad sd DRIFT matrices  ------------------
+
 for (i in 1:length(datasets)) {
   mean_matrices[[i]] <- list()
   sd_matrices[[i]] <- list()
@@ -302,7 +309,7 @@ for (i in 1:length(datasets)) {
   }
 }
 
-# Calculate biases
+#---------- Calculate biases and sd for every dataset and model  --------------
 for (i in 1:length(datasets)) {
   biases[i, 1] <- round(mean(abs(mean_matrices[[i]][[1]] - true_drift_cont)), 3)
   biases[i, 2] <- round(mean(abs(mean_matrices[[i]][[2]] - true_drift_disc)), 3)
@@ -312,6 +319,7 @@ for (i in 1:length(datasets)) {
   # median_biases[i, 1] <- round(median(abs(mean_matrices[[i]][[1]] - true_drift_cont)), 3)
   # median_biases[i, 2] <- round(median(abs(mean_matrices[[i]][[2]] - true_drift_disc)), 3)
 }
+
 #----------------------------------------------------
 #---------- Plot biases ------------------------- ---
 #----------------------------------------------------
@@ -326,6 +334,7 @@ labels = c('Equal time-intervals,\n equal timescales',
            'Unequal time-intervals, \nequal timescales',
            'Unequal time-intervals, \nunequal timescales')
 
+#---------- Store all infor in correct df format for ggplot  -------------------
 biases = matrix(biases,ncol = 1)
 sds = matrix(sd_graph,ncol = 1)
 biases_df = as.data.frame(biases)
@@ -337,7 +346,10 @@ biases_df = biases_df %>%
   mutate(Bias = as.numeric(`Mean absolute bias`)) %>%
   mutate(sd = sds)
 
-# Plot the biases of DT and CT 
+#----------------------------------------------------
+#---------- ggplot ----------------------------------
+#----------------------------------------------------
+
 ggplot(biases_df, 
        aes(x = forcats::fct_rev(`Data set`),
            y = `Mean absolute bias`,
@@ -366,8 +378,8 @@ ggplot(biases_df,
 #----------------------------------------------------
 #---------- Plot networks ---------------------------
 #----------------------------------------------------
-# Get parameters from output
 
+# Get parameters from output
 ctres <- getdrift(summary(ctfit))
 dtres <- getdrift(summary(dtfit), mode = "DT")
 
