@@ -334,7 +334,7 @@ labels = c('Equal time-intervals,\n equal timescales',
            'Unequal time-intervals, \nequal timescales',
            'Unequal time-intervals, \nunequal timescales')
 
-#---------- Store all infor in correct df format for ggplot  -------------------
+#---------- Store all info in correct df format for ggplot  -------------------
 biases = matrix(biases,ncol = 1)
 sds = matrix(sd_graph,ncol = 1)
 biases_df = as.data.frame(biases)
@@ -392,6 +392,8 @@ saveRDS(output, file = "estimates.RDS")
 sink("SessionInfo.txt")
 sessionInfo()
 sink()
+
+
 
 
 lab_2 = c("S1","S2","S3")
@@ -669,6 +671,69 @@ phi <- dtres$phi
 #---------- Figure: CT and DT networks --------------
 #----------------------------------------------------
 
+# ----------------------------------------------------------------------
+# ---------- Plot matrix in network form  --------------------
+# ----------------------------------------------------------------------
+
+netplot <- function(mat, greyscale = FALSE, maximum = .5, asize = 4, edge.labels = TRUE,
+                    edge.label.cex = 1, fade = FALSE, shape = "circle",
+                    labels = TRUE,
+                    vsize = 10,
+                    esize = 8){
+  
+  layout <- rbind(c(0,3), 
+                  c(3,3), 
+                  c(3,0),
+                  c(0,0),
+                  c(4,1.5))
+  
+  if(isTRUE(labels)){ labels = c("X1", "X2", "X3", "X4") }
+  
+  m_lty <- matrix(1, 5, 5)
+  m_lty[mat<0] <- 2 
+  
+  m_col <- matrix("firebrick2",5,5)
+  m_col[mat > 0 ] <- "blue"
+  if(greyscale){
+    qgraph::qgraph(t(mat), 
+                   layout = layout,
+                   directed = T, 
+                   edge.color = "darkgrey",
+                   edge.labels = edge.labels,
+                   edge.label.cex = edge.label.cex,
+                   edge.label.color = "darkgrey",
+                   # curved = FALSE, 
+                   lty = t(m_lty), 
+                   vsize = vsize, 
+                   esize = esize,
+                   asize= asize,
+                   # color = cols,
+                   mar = c(8, 10, 8, 8), maximum=maximum,
+                   fade = fade,
+                   shape = shape,
+                   maximum = maximum,
+                   labels = labels)
+  } else{
+    qgraph::qgraph(t(mat),
+                   edge.color = t(m_col),
+                   layout = layout,
+                   directed = T, 
+                   edge.labels = edge.labels,
+                   edge.label.cex = edge.label.cex,
+                   # curved = FALSE, 
+                   lty = t(m_lty), 
+                   vsize = 10, 
+                   esize = 5,
+                   asize= asize,
+                   # color = cols,
+                   mar = c(8, 10, 8, 8), maximum=maximum,
+                   fade = fade,
+                   shape = shape,
+                   maximum = maximum,
+                   labels = labels)
+  }
+}
+
 source('/Users/jesusblanco/Documents/MSc Psychology/Semester 2/Thesis/Analysis/ESMdata/fun_plots_5.R')
 
 # CT network
@@ -679,3 +744,4 @@ netplot(drift, labels = lab)
 # DT network
 netplot(phi, labels = lab, shape = "square")
 #dev.off()
+
